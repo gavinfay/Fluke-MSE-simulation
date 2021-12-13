@@ -16,8 +16,8 @@
 # 4) Set of utility parameters draws from one of the four surveys, for MA-NY states: utility_param_draws_MA_NY.xlsx
 
 
-state1="DE"
-region1="SO"
+state1="NJ"
+region1="NJ"
 
 
 # Input the calibration output which contains the number of choice occasions needed to simulate
@@ -26,8 +26,8 @@ calibration_data = subset(calibration_data, state == state1, select=c(period, si
 
 
 # Input the data set containing alterntative regulations and directed trips (directed_trips_region - alternative regs test.xlsx)
-directed_trips = data.frame(read_excel("directed_trips_region - alternative regs test.xlsx"))                                                                            
-directed_trips$dtrip=round(directed_trips$dtrip)
+directed_trips = data.frame(read_excel("directed_trips_regions_bimonthly.xlsx"))                                                                            
+directed_trips$dtrip=round(directed_trips$dtrip_2019)
 directed_trips= subset(directed_trips, state == state1)
 
 min_period=min(directed_trips$period)
@@ -41,15 +41,20 @@ max_period=max(directed_trips$period)
 # Set up an output file for the separately simulated within-season regulatory periods  
 pds = list()
 
-for (p in min_period:max_period) {
+periodz=as.factor(directed_trips$period)
+levels(periodz)
+
+for(p in levels(periodz)){
   directed_trips_p = subset(directed_trips, period == p)
-  n_trips = mean(directed_trips_p$dtrip)
+  n_trips = mean(directed_trips_p$dtrip_2019)
   n_draws = min(10000,n_trips*2.5 )
   fluke_bag = mean(directed_trips_p$fluke_bag)
   fluke_min = mean(directed_trips_p$fluke_min)
   fluke_max = mean(directed_trips_p$fluke_max)
   bsb_bag = mean(directed_trips_p$bsb_bag)
   bsb_min = mean(directed_trips_p$bsb_min)
+  scup_bag = mean(directed_trips_p$scup_bag)
+  scup_min = mean(directed_trips_p$scup_min)
   wf_bag = mean(directed_trips_p$wf_bag)
   wf_min = mean(directed_trips_p$wf_min)
   
@@ -59,20 +64,25 @@ for (p in min_period:max_period) {
   for(i in 1:10) {
     
     # Input catch-per-trip numbers 
-    # Catch-per-trip for all species remains the same. We extract that info from costs_new_all_state.
-    # The size of summer flounder caught, however, changes accordaning to the 
-    # population-based catch-at-length distribution, which is contained in sf_fitted_sizes_y2plus.xlsx.
-    # Keep and release of summer changes according to the newly drawn sizes and regulations.
+    sf_catch_data = data.frame(read_excel("predicted_catch_NJ.xlsx"))                                                                            
+    tot_sf_catch = sf_catch_data$sf_t_nb
+    tot_bsb_catch = sf_catch_data$bsb_t_nb
+    sf_catch_data = data.frame(tot_sf_catch,tot_bsb_catch)
     
-    sf_catch_data = subset(costs_new_all_DE, period ==p & catch_draw==i, select=c(tripid, tot_sf_catch))
+    # random draw of fluke and bsb catch
+    sf_catch_data = as.data.frame(sf_catch_data[sample(1:nrow(sf_catch_data), n_draws), ])
+    sf_catch_data$tripid = 1:nrow(sf_catch_data)
     
     
-    # subset trips with zero sf catch
+    
+    # subset trips with zero catch, as no size draws are required
     sf_zero_catch = subset(sf_catch_data, tot_sf_catch == 0)
     
     
-    #remove trips with zero summer flounder catch, will add them in later
+    
+    #remove trips with zero summer flounder catch
     sf_catch_data=sf_catch_data[sf_catch_data$tot_sf_catch!=0, ]
+    
     
     
     #expand the sf_catch_data so that each row represents a fish
@@ -174,17 +184,20 @@ for (p in min_period:max_period) {
     
     # merge catch information for other species. Assume per-trip catch outcomes for these species are the same as the calibration. 
     # This info is contained in the costs_new_all_state datasets
-    bsb_wf_data=subset(costs_new_all_DE, period ==p & catch_draw==i, select=c(tripid, tot_keep_bsb_base, tot_rel_bsb_base,
+    bsb_sc_wf_data=subset(costs_new_all_NJ, period ==p & catch_draw==i, select=c(tripid,tot_keep_scup_base, tot_rel_scup_base, 
+                                                                                 tot_keep_bsb_base, tot_rel_bsb_base,
                                                                                  tot_keep_wf_base, tot_rel_wf_base )) 
     
-    names(bsb_wf_data)[names(bsb_wf_data) == "tot_keep_bsb_base"] = "tot_keep_bsb"
-    names(bsb_wf_data)[names(bsb_wf_data) == "tot_rel_bsb_base"] = "tot_rel_bsb"
-    names(bsb_wf_data)[names(bsb_wf_data) == "tot_keep_wf_base"] = "tot_keep_wf"
-    names(bsb_wf_data)[names(bsb_wf_data) == "tot_rel_wf_base"] = "tot_rel_wf"
+    names(bsb_sc_wf_data)[names(bsb_sc_wf_data) == "tot_keep_bsb_base"] = "tot_keep_bsb"
+    names(bsb_sc_wf_data)[names(bsb_sc_wf_data) == "tot_rel_bsb_base"] = "tot_rel_bsb"
+    names(bsb_sc_wf_data)[names(bsb_sc_wf_data) == "tot_keep_scup_base"] = "tot_keep_scup"
+    names(bsb_sc_wf_data)[names(bsb_sc_wf_data) == "tot_rel_scup_base"] = "tot_rel_scup"
+    names(bsb_sc_wf_data)[names(bsb_sc_wf_data) == "tot_keep_wf_base"] = "tot_keep_wf"
+    names(bsb_sc_wf_data)[names(bsb_sc_wf_data) == "tot_rel_wf_base"] = "tot_rel_wf"
     
     
     # merge the trip data (summer flounder catch + lengths) with the other species data (numbers kept and released))
-    trip_data =  merge(trip_data,bsb_wf_data,by="tripid")
+    trip_data =  merge(trip_data,bsb_sc_wf_data,by="tripid")
     trip_data[is.na(trip_data)] = 0        
     
     
@@ -206,6 +219,8 @@ for (p in min_period:max_period) {
   pds[[p]] = dfs_all
 }
 
+pds_all= list.stack(pds, fill=TRUE)
+pds_all[is.na(pds_all)] = 0
 
 ######################################
 ##   End simulating trip outcomes   ##
@@ -214,11 +229,13 @@ for (p in min_period:max_period) {
 # Now calculate trip probabilities and utilities based on the multiple catch draws for each choice occasion
 
 pds_new = list()
-for (p in min_period:max_period) {
+for(p in levels(periodz)){
   
   # Merge the prediction year data to the calibration data
-  cost_data = subset(costs_new_all_DE, period == p, select=-c(period, tot_sf_catch))
-  trip_data =  merge(pds[[p]],cost_data,by=c("tripid", "catch_draw"))
+  pds=subset(pds_all, period==p)
+  
+  cost_data = subset(costs_new_all_NJ, period == p, select=-c(period, tot_sf_catch))
+  trip_data =  merge(pds,cost_data,by=c("tripid", "catch_draw"))
   trip_data[is.na(trip_data)] = 0
   
   
@@ -227,28 +244,34 @@ for (p in min_period:max_period) {
   
   for(d in 1:1) {
     
-    #Import utility parameter draws
-    param_draws_DEMD = data.frame(read_excel("utility_params_draws_DE_MD.xlsx"))                                                                            
-    param_draws_DEMD1 = subset(param_draws_DEMD, n==d)
+    # Use the previously drawn set of utility parameters to calculate expected utility, welfare, and effort in the prediction year
+    param_draws_NJ_prediction = subset(param_draws_NJ, parameter_draw=i)
+    trip_data =  merge(param_draws_NJ_prediction,trip_data,by="tripid")
+    
     
     # Expected utility (prediction year)
-    trip_data$vA = param_draws_DEMD1$sqrt_sf_keep*sqrt(trip_data$tot_keep) +
-      param_draws_DEMD1$sqrt_sf_release*sqrt(trip_data$tot_rel) +
-      param_draws_DEMD1$sqrt_bsb_keep*sqrt(trip_data$tot_keep_bsb) +
-      param_draws_DEMD1$sqrt_bsb_release*sqrt(trip_data$tot_rel_bsb) +
-      param_draws_DEMD1$sqrt_wf_keep*sqrt(trip_data$tot_keep_wf) +
-      param_draws_DEMD1$sqrt_wf_release*sqrt(trip_data$tot_rel_wf) +
-      param_draws_DEMD1$cost*trip_data$cost
+    trip_data$vA = trip_data$beta_sqrt_sf_keep*sqrt(trip_data$tot_keep) +
+      trip_data$beta_sqrt_sf_release*sqrt(trip_data$tot_rel) +  
+      trip_data$beta_sqrt_bsb_keep*sqrt(trip_data$tot_keep_bsb) +
+      trip_data$beta_sqrt_bsb_release*sqrt(trip_data$tot_rel_bsb) +  
+      trip_data$beta_sqrt_scup_keep*sqrt(trip_data$tot_keep_scup) +
+      trip_data$beta_sqrt_scup_release*sqrt(trip_data$tot_rel_scup) + 
+      trip_data$beta_sqrt_wf_keep*sqrt(trip_data$tot_keep_wf) +
+      trip_data$beta_sqrt_wf_release*sqrt(trip_data$tot_rel_wf) +   
+      trip_data$beta_cost*trip_data$cost 
     
-    # Expected utility (baseline year)
-    trip_data$v0 = param_draws_DEMD1$sqrt_sf_keep*sqrt(trip_data$tot_keep_sf_base) +
-      param_draws_DEMD1$sqrt_sf_release*sqrt(trip_data$tot_rel_sf_base) +
-      param_draws_DEMD1$sqrt_bsb_keep*sqrt(trip_data$tot_keep_bsb_base) +
-      param_draws_DEMD1$sqrt_bsb_release*sqrt(trip_data$tot_rel_bsb_base) +
-      param_draws_DEMD1$sqrt_wf_keep*sqrt(trip_data$tot_keep_wf_base) +
-      param_draws_DEMD1$sqrt_wf_release*sqrt(trip_data$tot_rel_wf_base) +
-      param_draws_DEMD1$cost*trip_data$cost
+    # Expected utility (base year)
+    trip_data$v0 = trip_data$beta_sqrt_sf_keep*sqrt(trip_data$tot_keep_sf_base) +
+      trip_data$beta_sqrt_sf_release*sqrt(trip_data$tot_rel_sf_base) +  
+      trip_data$beta_sqrt_bsb_keep*sqrt(trip_data$tot_keep_bsb_base) +
+      trip_data$beta_sqrt_bsb_release*sqrt(trip_data$tot_rel_bsb_base) +  
+      trip_data$beta_sqrt_scup_keep*sqrt(trip_data$tot_keep_scup_base) +
+      trip_data$beta_sqrt_scup_release*sqrt(trip_data$tot_rel_scup_base) + 
+      trip_data$beta_sqrt_wf_keep*sqrt(trip_data$tot_keep_wf_base) +
+      trip_data$beta_sqrt_wf_release*sqrt(trip_data$tot_rel_wf_base) + 
+      trip_data$beta_cost*trip_data$cost 
     
+    trip_data$period=as.numeric(trip_data$period)
     
     # Collapse data from the X catch draws so that each row contains mean values
     mean_trip_data <-aggregate(trip_data, by=list(trip_data$tripid),FUN=mean, na.rm=TRUE)
@@ -265,8 +288,8 @@ for (p in min_period:max_period) {
     
     #Caluculate the expected utility of alts 2 and 3 based on the parameters of the utility function
     #These will be the same for both v0 and v1
-    mean_trip_data$vA_optout= param_draws_DEMD1$optout*mean_trip_data$opt_out 
-    mean_trip_data$vA_striper_blue= param_draws_DEMD1$striper_blue*mean_trip_data$striper_blue 
+    mean_trip_data$vA_optout= mean_trip_data$beta_opt_out*mean_trip_data$opt_out 
+    mean_trip_data$vA_striper_blue= mean_trip_data$beta_striper_blue*mean_trip_data$striper_blue 
     
     #Now put these three values in the same column, exponentiate, and caluculate their sum (vA_col_sum)
     mean_trip_data$vA[mean_trip_data$alt!=1] <- 0
@@ -282,7 +305,7 @@ for (p in min_period:max_period) {
     
     
     #change in Consmer surplus between prediction year and baseline year 
-    mean_trip_data$change_CS = (1/param_draws_DEMD1$cost)*(log(mean_trip_data$vA_col_sum) - log(mean_trip_data$v0_col_sum))
+    mean_trip_data$change_CS = (1/mean_trip_data$beta_cost)*(log(mean_trip_data$vA_col_sum) - log(mean_trip_data$v0_col_sum))
     
     
     # Caluculate the probability of a respondent selected each alternative based on 
@@ -293,7 +316,10 @@ for (p in min_period:max_period) {
     mean_trip_data$prob0 = mean_trip_data$v0_row_sum/mean_trip_data$v0_col_sum
     
     # Get rid of things we don't need. 
-    mean_trip_data = subset(mean_trip_data, alt==1, select=-c(alt, opt_out, striper_blue, vA_optout, vA_striper_blue, vA_row_sum, vA_col_sum, v0_row_sum, v0_col_sum))
+    mean_trip_data = subset(mean_trip_data, alt==1, select=-c(alt, opt_out, striper_blue, vA_optout, vA_striper_blue, vA_row_sum, vA_col_sum, v0_row_sum, v0_col_sum,
+                                                              beta_cost, beta_striper_blue, beta_opt_out, beta_sqrt_scup_release, beta_sqrt_scup_keep,
+                                                              beta_sqrt_bsb_release, beta_sqrt_bsb_keep, beta_sqrt_sf_release, beta_sqrt_sf_keep, 
+                                                              beta_sqrt_wf_release, beta_sqrt_wf_keep))
     
     
     # Multiply the average trip probability by each of the catch variables (not the variable below) to get probability-weighted catch
@@ -301,6 +327,7 @@ for (p in min_period:max_period) {
                                           & colnames(mean_trip_data) !="catch_draw" & colnames(mean_trip_data) !="period" & colnames(mean_trip_data) !="cost" 
                                           & colnames(mean_trip_data) !="tot_keep_sf_base" & colnames(mean_trip_data) !="tot_rel_sf_base" 
                                           & colnames(mean_trip_data) !="tot_keep_bsb_base" & colnames(mean_trip_data) !="tot_rel_bsb_base" 
+                                          & colnames(mean_trip_data) !="tot_keep_scup_base" & colnames(mean_trip_data) !="tot_rel_scup_base"
                                           & colnames(mean_trip_data) !="tot_keep_wf_base" & colnames(mean_trip_data) !="tot_rel_wf_base" 
                                           & colnames(mean_trip_data) !="vA" & colnames(mean_trip_data) !="v0"  & colnames(mean_trip_data) !="probA"
                                           & colnames(mean_trip_data) !="prob0" & colnames(mean_trip_data) !="change_CS"  ]
@@ -320,6 +347,7 @@ for (p in min_period:max_period) {
                                           & colnames(mean_trip_data) !="catch_draw" & colnames(mean_trip_data) !="period"
                                           & colnames(mean_trip_data) !="tot_keep_sf_base" & colnames(mean_trip_data) !="tot_rel_sf_base" 
                                           & colnames(mean_trip_data) !="tot_keep_bsb_base" & colnames(mean_trip_data) !="tot_rel_bsb_base" 
+                                          & colnames(mean_trip_data) !="tot_keep_scup_base" & colnames(mean_trip_data) !="tot_rel_scup_base" 
                                           & colnames(mean_trip_data) !="tot_keep_wf_base" & colnames(mean_trip_data) !="tot_rel_wf_base" 
                                           & colnames(mean_trip_data) !="cost" & colnames(mean_trip_data) !="vA" & colnames(mean_trip_data) !="v0"]
     
@@ -364,11 +392,12 @@ for (p in min_period:max_period) {
 }
 
 
-pds_new_all_DE = as.data.frame(bind_rows(pds_new[[1]], pds_new[[2]]))
-pds_new_all_DE[is.na(pds_new_all_DE)] = 0
-pds_new_all_DE$state = state1
-pds_new_all_DE$alt_regs = 1
-pds_new_all_DE=subset(pds_new_all_DE, select=-c(Group.1, tot_keep_sf_base, tot_rel_sf_base, 
+pds_new_all_NJ=list.stack(pds_new, fill=TRUE)
+pds_new_all_NJ[is.na(pds_new_all_NJ)] = 0
+pds_new_all_NJ$state = state1
+pds_new_all_NJ$alt_regs = 1
+pds_new_all_NJ=subset(pds_new_all_NJ, select=-c(Group.1, tot_keep_sf_base, tot_rel_sf_base, 
+                                                tot_keep_scup_base, tot_rel_scup_base, 
                                                 tot_keep_wf_base, tot_rel_wf_base, 
                                                 tot_keep_bsb_base, tot_rel_bsb_base, tot_sf_catch))
 
