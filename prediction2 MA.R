@@ -15,20 +15,48 @@
 #    For now, the catch-at-length disitributions in this file are identical to the calibration catch-at-lengths: sf_fitted_sizes_y2plus.xlsx
 # 4) Set of utility parameters draws from one of the four surveys, for MA-NY states: utility_param_draws_MA_NY.xlsx
 
+predict_rec_catch <- function(state1 = "MA", 
+                              region1 = "NO", 
+                              calibration_data_table = NULL,
+                              directed_trips_table = NULL,
+                              size_data_read = NULL,
+                              param_draws_MANY = NULL,
+                              costs_new_all = NULL) {
+# # DUMMY TESTING ARGUMENT VALUES
+# # 
+#  state1="MA"
+#  region1="NO"
+# # Input the calibration output which contains the number of choice occasions needed to simulate
+# #calibration_data = data.frame(read_excel("calibration_output_by_period.xlsx"))
+# calibration_data_table <- readRDS("calibration_output_by_period.rds")
+# # Read-in the current population length composition
+# size_data_read <- data.frame(read_excel("sf_fitted_sizes_y2plus.xlsx"))
+# #regulations table
+# directed_trips_table <- data.frame(read_excel("directed_trips_region - alternative regs test.xlsx"))
+# #utility parameter draws
+# param_draws_MANY = data.frame(read_excel("utility_param_draws_MA_NY.xlsx"))     
+# #costs
+# costs_new_all <- readRDS("costs_new_all_MA.rds")
+costs_new_all_MA <- costs_new_all
 
-state1="MA"
-region1="NO"
 
-
-# Input the calibration output which contains the number of choice occasions needed to simulate
-calibration_data = data.frame(read_excel("calibration_output_by_period.xlsx"))
-calibration_data = subset(calibration_data, state == state1, select=c(period, sim, state, n_choice_occasions))
-
+# system.time({
+# calibration_data = subset(calibration_data, state == state1, select=c(period, sim, state, n_choice_occasions))
+# })
+# system.time({
+  calibration_data <- calibration_data_table %>% 
+  dplyr::filter(state==state1) %>% 
+  dplyr::select(period, sim, state, n_choice_occasions)
+#})
 
 # Input the data set containing alterntative regulations and directed trips (directed_trips_region - alternative regs test.xlsx)
-directed_trips = data.frame(read_excel("directed_trips_region - alternative regs test.xlsx"))                                                                            
+# GF moved to wrapper, file doesn't change over state
+#directed_trips = data.frame(read_excel("directed_trips_region - alternative regs test.xlsx"))  
+directed_trips <- directed_trips_table
+
 directed_trips$dtrip=round(directed_trips$dtrip)
-directed_trips= subset(directed_trips, state == state1)
+#directed_trips= subset(directed_trips, state == state1)
+directed_trips= dplyr::filter(directed_trips, state == state1)
 
 min_period=min(directed_trips$period)
 max_period=max(directed_trips$period)
@@ -41,8 +69,11 @@ max_period=max(directed_trips$period)
 # Set up an output file for the separately simulated within-season regulatory periods  
 pds = list()
 
+#size_data_read <- data.frame(read_excel("sf_fitted_sizes_y2plus.xlsx"))
+
 for (p in min_period:max_period) {
-  directed_trips_p = subset(directed_trips, period == p)
+  #directed_trips_p = subset(directed_trips, period == p)
+  directed_trips_p = dplyr::filter(directed_trips, period == p)
   n_trips = mean(directed_trips_p$dtrip)
   n_draws = min(10000,n_trips*2.5 )
   fluke_bag = mean(directed_trips_p$fluke_bag)
@@ -57,20 +88,22 @@ for (p in min_period:max_period) {
   # Set up an output file for the separate catch draw files 
   dfs = list()
   
-  for(i in 1:10) {
-    
+#  for(i in 1:10) {
+  get_catch_draws <- function(i) {  
     # Input catch-per-trip numbers 
     # Catch-per-trip for all species remains the same. We extract that info from costs_new_all_state.
     # The size of summer flounder caught, however, changes accordaning to the 
     # population-based catch-at-length distribution, which is contained in sf_fitted_sizes_y2plus.xlsx.
     # Keep and release of summer changes according to the newly drawn sizes and regulations.
     
-    sf_catch_data = subset(costs_new_all_MA, period ==p & catch_draw==i, select=c(tripid, tot_sf_catch))
- 
+    #sf_catch_data = subset(costs_new_all_MA, period ==p & catch_draw==i, select=c(tripid, tot_sf_catch))
+    sf_catch_data = costs_new_all_MA %>% 
+      dplyr::filter(period ==p & catch_draw==i) %>% 
+      dplyr::select(tripid, tot_sf_catch) 
     
     # subset trips with zero sf catch
-    sf_zero_catch = subset(sf_catch_data, tot_sf_catch == 0)
-    
+    #sf_zero_catch = subset(sf_catch_data, tot_sf_catch == 0)
+    sf_zero_catch = dplyr::filter(sf_catch_data, tot_sf_catch == 0)
     
     #remove trips with zero summer flounder catch, will add them in later
     sf_catch_data=sf_catch_data[sf_catch_data$tot_sf_catch!=0, ]
@@ -84,23 +117,27 @@ for (p in min_period:max_period) {
     
 
     #import and expand the population numbers-adjusted sf_size_data so that each row represents a fish
-    size_data_sf = data.frame(read_excel("sf_fitted_sizes_y2plus.xlsx"))
-    size_data_sf = subset(size_data_sf, region==region1, select= c(fitted_length, fitted_prob))
+    size_data_sf = size_data_read #data.frame(read_excel("sf_fitted_sizes_y2plus.xlsx"))
+    #size_data_sf = subset(size_data_sf, region==region1, select= c(fitted_length, fitted_prob))
+    size_data_sf = size_data_sf %>% 
+      dplyr::filter(region==region1) %>% 
+      dplyr::select(fitted_length, fitted_prob)
     size_data_sf$nfish = round(100000 * size_data_sf$fitted_prob, digits=0)
     sum(size_data_sf$nfish)
     
     row_inds <- seq_len(nrow(size_data_sf))
     size_data_sf <- size_data_sf[c(rep(row_inds, size_data_sf$nfish)), ]
     rownames(size_data_sf) = NULL
-    size_data_sf = subset(size_data_sf, select= fitted_length)
+    #size_data_sf = subset(size_data_sf, select= fitted_length)
+    size_data_sf = size_data_sf %>% dplyr::select(fitted_length)
     
     
     #draw random sample of sizes matching the number of fish caught
     random_sizes  = data.frame(size_data_sf[sample(nrow(size_data_sf), nrow(sf_catch_data)), ])
     colnames(random_sizes) = "fitted_length"
     random_sizes$fishid = 1:nrow(random_sizes)
-    catch_size_data =  merge(random_sizes,sf_catch_data,by="fishid")
-    
+    #catch_size_data =  merge(random_sizes,sf_catch_data,by="fishid")
+    catch_size_data =  left_join(random_sizes,sf_catch_data,by="fishid")
     
     # Impose regulations, calculate keep and release per trip
     # For summer flounder, retain keep- and release-at-length
@@ -113,7 +150,9 @@ for (p in min_period:max_period) {
     catch_size_data$keep_adj = ifelse(catch_size_data$csum_keep<=bag & catch_size_data$keep==1, 1,0) 
     catch_size_data$release = ifelse(catch_size_data$keep_adj==1, 0,1) 
     
-    catch_size_data= subset(catch_size_data, select=c(fishid, fitted_length, tot_sf_catch, tripid, keep_adj, release))
+    #catch_size_data= subset(catch_size_data, select=c(fishid, fitted_length, tot_sf_catch, tripid, keep_adj, release))
+    catch_size_data = catch_size_data %>% 
+      dplyr::select(fishid, fitted_length, tot_sf_catch, tripid, keep_adj, release)
     names(catch_size_data)[names(catch_size_data) == "keep_adj"] = "keep"
     
     
@@ -129,13 +168,19 @@ for (p in min_period:max_period) {
     
     
     # generate data set with size of each fish kept and released
-    keep_size_data= subset(catch_size_data, keep==1, select=c(fitted_length, tripid, keep, release))
-    release_size_data= subset(catch_size_data, keep==0, select=c(fitted_length, tripid, keep, release))
+    #keep_size_data= subset(catch_size_data, keep==1, select=c(fitted_length, tripid, keep, release))
+    #release_size_data= subset(catch_size_data, keep==0, select=c(fitted_length, tripid, keep, release))
+    keep_size_data= catch_size_data %>% 
+      dplyr::filter(keep==1) %>% dplyr::select(fitted_length, tripid, keep, release)
+    release_size_data= catch_size_data %>% 
+      dplyr::filter(keep==0) %>% dplyr::select(fitted_length, tripid, keep, release)
     
-    keep_size_data = subset(keep_size_data, select=c(fitted_length, tripid, keep))
+        
+    #keep_size_data = subset(keep_size_data, select=c(fitted_length, tripid, keep))
+    keep_size_data = keep_size_data %>% dplyr::select(fitted_length, tripid, keep)
     keep_size_data <- keep_size_data %>%
       group_by(tripid, fitted_length) %>%
-      summarize(keep = sum(keep))
+      summarize(keep = sum(keep), .groups = "drop")
     
     
     names(keep_size_data)[names(keep_size_data) == "fitted_length"] = "keep_length"
@@ -145,10 +190,11 @@ for (p in min_period:max_period) {
     keep_size_data_wide[is.na(keep_size_data_wide)] = 0
     
     
-    release_size_data = subset(release_size_data, select=c(fitted_length, tripid, release))
+    #release_size_data = subset(release_size_data, select=c(fitted_length, tripid, release))
+    release_size_data = release_size_data %>% dplyr::select(fitted_length, tripid, release)
     release_size_data <- release_size_data %>%
       group_by(tripid, fitted_length) %>%
-      summarize(release = sum(release))
+      summarize(release = sum(release), .groups = "drop")
     
     
     names(release_size_data)[names(release_size_data) == "fitted_length"] = "release_length"
@@ -161,7 +207,7 @@ for (p in min_period:max_period) {
     # merge the keep-/release-at-length files with the tot_keep/release file 
     trip_data =  merge(release_size_data_wide,keep_size_data_wide,by="tripid", all.x=TRUE, all.y=TRUE)
     trip_data =  merge(trip_data,catch_size_data2,by="tripid", all.x=TRUE, all.y=TRUE)
-    
+
     
     #add the zero catch trips 
     trip_data = bind_rows(trip_data, sf_zero_catch)
@@ -184,19 +230,21 @@ for (p in min_period:max_period) {
     names(bsb_sc_data)[names(bsb_sc_data) == "tot_rel_scup_base"] = "tot_rel_scup"
     
     # merge the trip data (summer flounder catch + lengths) with the other species data (numbers kept and released))
-    trip_data =  merge(trip_data,bsb_sc_data,by="tripid")
+    #trip_data =  merge(trip_data,bsb_sc_data,by="tripid")
+    trip_data =  left_join(trip_data,bsb_sc_data,by="tripid")
     trip_data[is.na(trip_data)] = 0        
     
     
     trip_data$catch_draw=i
-    dfs[[i]]=trip_data
-   
-    
+    #dfs[[i]]=trip_data
+    dfs <- trip_data
+    return(dfs)
   }
   
-  dfs_all = as.data.frame(bind_rows(dfs[[1]], dfs[[2]],dfs[[3]],dfs[[4]],dfs[[5]],
-                                    dfs[[6]], dfs[[7]],dfs[[8]],dfs[[9]],dfs[[10]]))
-
+  # dfs_all = as.data.frame(bind_rows(dfs[[1]], dfs[[2]],dfs[[3]],dfs[[4]],dfs[[5]],
+  #                                   dfs[[6]], dfs[[7]],dfs[[8]],dfs[[9]],dfs[[10]]))
+  dfs_all <- purrr::map_dfr(1:10,get_catch_draws)
+  #dfs_all <- purrr::map_dfr(1,get_catch_draws)
   
   dfs_all[is.na(dfs_all)] = 0
   dfs_all <- dfs_all[order(dfs_all$tripid),]
@@ -214,11 +262,15 @@ for (p in min_period:max_period) {
 # Now calculate trip probabilities and utilities based on the multiple catch draws for each choice occasion
 
 pds_new = list()
+
+#param_draws_MANY = data.frame(read_excel("utility_param_draws_MA_NY.xlsx"))                                                                            
+
 for (p in min_period:max_period) {
   
   # Merge the prediction year data to the calibration data
   cost_data = subset(costs_new_all_MA, period == p, select=-c(period, tot_sf_catch))
-  trip_data =  merge(pds[[p]],cost_data,by=c("tripid", "catch_draw"))
+  #trip_data =  merge(pds[[p]],cost_data,by=c("tripid", "catch_draw"))
+  trip_data =  left_join(pds[[p]],cost_data,by=c("tripid", "catch_draw"))
   trip_data[is.na(trip_data)] = 0
 
   
@@ -228,7 +280,7 @@ for (p in min_period:max_period) {
   for(d in 1:1) {
     
     #Import utility parameter draws
-    param_draws_MANY = data.frame(read_excel("utility_param_draws_MA_NY.xlsx"))                                                                            
+#    param_draws_MANY = data.frame(read_excel("utility_param_draws_MA_NY.xlsx"))                                                                            
     param_draws_MANY1 = subset(param_draws_MANY, n==d)
     
     # Expected utility (prediction year)
@@ -250,9 +302,18 @@ for (p in min_period:max_period) {
       param_draws_MANY1$cost*trip_data$cost
     
     
-    # Collapse data from the X catch draws so that each row contains mean values
-    mean_trip_data <-aggregate(trip_data, by=list(trip_data$tripid),FUN=mean, na.rm=TRUE)
-    
+    # # Collapse data from the X catch draws so that each row contains mean values
+    # system.time({
+    # mean_trip_data <-aggregate(trip_data, by=list(trip_data$tripid),FUN=mean, na.rm=TRUE)
+    # })
+    # A purrr-style formula
+    # #system.time({
+    #   mean_trip_data <- trip_data %>%
+    #   group_by(tripid) %>%
+    #   summarise(across(everything(), ~ mean(.x, na.rm = TRUE)))
+    # #})
+      mean_trip_data <- trip_data
+      
     # Now expand the data to create three alternatives, representing the alternatives available in choice survey
     mean_trip_data <- expandRows(mean_trip_data, 3, count.is.col = FALSE)
     
@@ -275,6 +336,7 @@ for (p in min_period:max_period) {
     mean_trip_data$vA_row_sum = rowSums(mean_trip_data[,c("vA", "vA_striper_blue","vA_optout")])
     mean_trip_data$vA_row_sum = exp(mean_trip_data$vA_row_sum)
     mean_trip_data$vA_col_sum = ave(mean_trip_data$vA_row_sum, mean_trip_data$tripid, FUN = sum)
+    
     
     mean_trip_data$v0_row_sum = rowSums(mean_trip_data[,c("v0", "vA_striper_blue","vA_optout")])
     mean_trip_data$v0_row_sum = exp(mean_trip_data$v0_row_sum)
@@ -336,11 +398,19 @@ for (p in min_period:max_period) {
     mean_trip_data$sim=1
     
     #sum probability weighted catch over all choice occasions
-    aggregate_trip_data <-aggregate(mean_trip_data, by=list(mean_trip_data$sim),FUN=sum, na.rm=TRUE)
+    #aggregate_trip_data <-aggregate(mean_trip_data, by=list(mean_trip_data$sim),FUN=sum, na.rm=TRUE)
+    #system.time({
+      aggregate_trip_data <- mean_trip_data %>%
+      group_by(sim) %>%
+      summarise(across(everything(), ~ sum(.x, na.rm = TRUE)))
+    #})
+    
+    
     aggregate_trip_data$n_choice_occasions = n_choice_occasions
     
     
-    aggregate_trip_data = subset(aggregate_trip_data, select=-c(Group.1, Group.1, tripid, catch_draw, period, cost, vA , v0, sim))
+#    aggregate_trip_data = subset(aggregate_trip_data, select=-c(Group.1, Group.1, tripid, catch_draw, period, cost, vA , v0, sim))
+    aggregate_trip_data = subset(aggregate_trip_data, select=-c(tripid, catch_draw, period, cost, vA , v0, sim))
     names(aggregate_trip_data)[names(aggregate_trip_data) == "probA"] = "observed_trips"
     names(aggregate_trip_data)[names(aggregate_trip_data) == "prob0"] = "observed_trips_base"
     
@@ -368,11 +438,17 @@ pds_new_all_MA = as.data.frame(bind_rows(pds_new[[2]],pds_new[[3]],pds_new[[4]])
 pds_new_all_MA[is.na(pds_new_all_MA)] = 0
 pds_new_all_MA$state = state1
 pds_new_all_MA$alt_regs = 1
-pds_new_all_MA=subset(pds_new_all_MA, select=-c(Group.1, tot_keep_sf_base, tot_rel_sf_base, 
+# pds_new_all_MA=subset(pds_new_all_MA, select=-c(Group.1, tot_keep_sf_base, tot_rel_sf_base, 
+#                                                 tot_keep_scup_base, tot_rel_scup_base, 
+#                                                 tot_keep_bsb_base, tot_rel_bsb_base, tot_sf_catch))
+pds_new_all_MA=subset(pds_new_all_MA, select=-c(tot_keep_sf_base, tot_rel_sf_base, 
                                                 tot_keep_scup_base, tot_rel_scup_base, 
                                                 tot_keep_bsb_base, tot_rel_bsb_base, tot_sf_catch))
 
+pds_new_all <- pds_new_all_MA
 
 # write_xlsx(pds_new_all_MA,"MA_prediction_output_check.xlsx")
+return(pds_new_all)
 
-
+#end function
+}

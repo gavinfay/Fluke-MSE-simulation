@@ -558,7 +558,7 @@ pds_new_all_MA= subset(pds_new_all_MA, select=-c(Group.1, tot_sf_catch, tot_bsb_
 costs_new_all_MA = as.data.frame(bind_rows(costs_new_MA[[2]],costs_new_MA[[3]],costs_new_MA[[4]]))
 costs_new_all_MA[is.na(costs_new_all_MA)] = 0
 
-
+saveRDS(costs_new_all_MA, file = "costs_new_all_MA.rds")
 # MA_calibration_output_by_period = as.data.frame(bind_rows(pds_new_all_MA))
 # MA_calibration_output_by_period[is.na(MA_calibration_output_by_period)] = 0
 # write_xlsx(MA_calibration_output_by_period,"MA_calibration_output_by_period.xlsx")

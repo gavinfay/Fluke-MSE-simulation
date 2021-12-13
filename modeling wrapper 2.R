@@ -55,7 +55,7 @@ library(ggplot2)
 
 # Set the wd to wherever all the code/data is 
 
-setwd("C:/Users/andrew.carr-harris/Dropbox/NMFS/fluke_mse/simulation_R_code/")
+#setwd("C:/Users/andrew.carr-harris/Dropbox/NMFS/fluke_mse/simulation_R_code/")
 
 
 # Start the clock!
@@ -90,12 +90,30 @@ aggregate_calibration_output= subset(calibration_output_by_period, select=-c(sta
 aggregate_calibration_output = aggregate(aggregate_calibration_output, by=list(calibration_output_by_period$sim),FUN=sum, na.rm=TRUE)
 write_xlsx(aggregate_calibration_output,"aggregate_calibration_output.xlsx")
 
+saveRDS(calibration_output_by_period, file = "calibration_output_by_period.rds")
+saveRDS(aggregate_calibration_output, file = "aggregate_calibration_output.rds")
+
 ##########  
+costs_all <- NULL
+costs_all[[1]] <- costs_new_all_MA
+costs_all[[2]] <- costs_new_all_RI
+costs_all[[3]] <- costs_new_all_CT
+costs_all[[4]] <- costs_new_all_NY
+costs_all[[5]] <- costs_new_all_NJ
+costs_all[[6]] <- costs_new_all_DE
+costs_all[[7]] <- costs_new_all_MD
+costs_all[[8]] <- costs_new_all_VA
+costs_all[[9]] <- costs_new_all_NC
+saveRDS(costs_all, file = "costs_all.rds")
 
-
-
-
-
+ud1 <- data.frame(read_excel("utility_param_draws_MA_NY.xlsx"))
+saveRDS(ud1, file="utility_param_draws_MA_NY.rds")
+ud2 <- data.frame(read_excel("utility_params_draws_NJ.xlsx"))
+saveRDS(ud2, file="utility_param_draws_NJ.rds")
+ud3 <- data.frame(read_excel("utility_params_draws_DE_MD.xlsx"))
+saveRDS(ud3, file="utility_param_draws_DE_MD.rds")
+ud4 <- data.frame(read_excel("utility_params_draws_VA_NC.xlsx"))
+saveRDS(ud4, file="utility_param_draws_VA_NC.rds")
 
 ##########  
 # Input new population numbers-at-length distribution, run the following script to create catch-at-length for summer flounder
@@ -114,7 +132,57 @@ write_xlsx(aggregate_calibration_output,"aggregate_calibration_output.xlsx")
 # run the simulation code under the new set of regulations (directed_trips_region - alternative regs test.xlsx)
 # I've included only the Massachusetts file for now
 
+# Input the data set containing alternative regulations and directed trips (directed_trips_region - alternative regs test.xlsx)
+directed_trips_table <- data.frame(read_excel("directed_trips_region - alternative regs test.xlsx"))
+
+# Read-in the current population length composition
+size_data_read <- data.frame(read_excel("sf_fitted_sizes_y2plus.xlsx"))
+
+# Input the calibration output which contains the number of choice occasions needed to simulate
+#calibration_data = data.frame(read_excel("calibration_output_by_period.xlsx"))
+calibration_data_table <- readRDS("calibration_output_by_period.rds")
+#utility parameter draws
+ud1 <- readRDS("utility_param_draws_MA_NY.rds")
+ud2 <- readRDS("utility_param_draws_NJ.rds")
+ud3 <- readRDS("utility_param_draws_DE_MD.rds")
+ud4 <- readRDS("utility_param_draws_VA_NC.rds")
+
+#costs
+costs_new <- readRDS( "costs_all.rds")
+
+params <- list(state1 = c("MA","RI","CT","NY","NJ","DE","MD","VA","NC"),
+               region1 = c(rep("NO",4),"NJ",rep("SO",4)),
+               calibration_data_table = rep(list(calibration_data_table),9),
+               directed_trips_table = rep(list(directed_trips_table),9),
+               size_data_read = rep(list(size_data_read),9),
+               param_draws_MANY = c(rep(list(ud1),4),list(ud2),rep(list(ud3),2),rep(list(ud4),2)),
+               costs_new_all = costs_new)
+
+params <- list(state1 = "MA",
+               region1 = "NO",
+               calibration_data_table = list(calibration_data_table),
+               directed_trips_table = list(directed_trips_table),
+               size_data_read = list(size_data_read),
+               param_draws_MANY = list(ud1),
+               costs_new_all = list(costs_new[[1]]))
+
+
+
+# loop over states
 source("prediction2 MA.R")
+
+xx <- predict_rec_catch(state1 = "MA",
+                        region1 = "NO",
+                        calibration_data_table = calibration_data_table,
+                        directed_trips_table = directed_trips_table,
+                        size_data_read = size_data_read,
+                        param_draws_MANY = ud1,
+                        costs_new_all = costs_new[[1]])
+
+safe_predict_rec_catch <- purrr::safely(predict_rec_catch, otherwise = NA_real_)
+xx <- purrr::pmap(params, safe_predict_rec_catch)
+#xx <- purrr::pmap_dfr(params, safe_predict_rec_catch)
+
 source("prediction2 RI.R")
 source("prediction2 CT.R")
 source("prediction2 NY.R")
