@@ -214,15 +214,51 @@ source("prediction2 NC.R")
 prediction_output_by_period = as.data.frame(bind_rows(pds_new_all_MA, pds_new_all_RI, pds_new_all_CT,
                                                       pds_new_all_NY, pds_new_all_NJ, pds_new_all_DE,
                                                       pds_new_all_MD, pds_new_all_VA, pds_new_all_NC))
+
+#prediction_output_by_period <- purrr::map_dfr(xx,1)
+prediction_output_by_period <- xx[[1]][[1]]
+
 # 
 #prediction_output_by_period = as.data.frame(bind_rows(pds_new_all_MA))
 prediction_output_by_period[is.na(prediction_output_by_period)] = 0
 write_xlsx(prediction_output_by_period,"prediction_output_by_period.xlsx")
 
-aggregate_prediction_output= subset(prediction_output_by_period, select=-c(state, alt_regs))
+#aggregate_prediction_output= subset(prediction_output_by_period, select=-c(state, alt_regs))
+ aggregate_prediction_output <- dplyr::select(prediction_output_by_period, -state, -alt_regs) %>% 
+#   colSums() %>% 
+   I()
 aggregate_prediction_output = aggregate(aggregate_prediction_output, by=list(aggregate_prediction_output$sim),FUN=sum, na.rm=TRUE)
 write_xlsx(aggregate_prediction_output,"aggregate_prediction_output.xlsx")
 
+pred_len <- tibble(aggregate_prediction_output) %>% 
+  dplyr::select(contains("length")) %>% 
+  pivot_longer(cols = 1:ncol(.), names_to = "bin",values_to = "num") %>% 
+  separate(bin, into =c("type","len"),sep = "_length_") %>% 
+  mutate(len = as.numeric(len)) %>% 
+  I()
+pred_len
+out_lens <- tibble(type = rep(c("release","keep"),each=Nlen_in),
+                   len = rep(lenbinuse,2)) %>% 
+  left_join(pred_len) %>% 
+  replace_na(list(num=0)) %>% 
+  I()
+out_lens
+in2cm <- readr::read_csv("in2cm.csv", col_names = FALSE)[,-1]
+keep <- out_lens %>% 
+  filter(type == "keep") %>% 
+  dplyr::select(num) %>% 
+  unlist() %>%
+  I()
+keep <- keep %*% t(in2cm)
+release <- out_lens %>% 
+  filter(type == "release") %>% 
+  dplyr::select(num) %>% 
+  unlist() %>%
+  I()
+release <- release %*% t(in2cm)
+write.table(round(rbind(keep,release),3),file = "rec-catch.out", row.names = FALSE, col.names = FALSE)
+
+  
 ##########  
 
 
